@@ -1,0 +1,66 @@
+version: '3.8'
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tests
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - TESTING=True
+    command: ["pytest", "-v", "--tb=short", "--maxfail=5"]
+    networks:
+      - app-network
+    depends_on:
+      database:
+        condition: service_healthy
+    profiles:
+      - test
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - TESTING=False
+    command:
+      - "sh"
+      - "-c"
+      - "uvicorn api.server.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: on-failure
+
+  database:
+    image: postgres:15-alpine
+    container_name: database
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?err}
+      POSTGRES_DB: ${POSTGRES_DB:-app_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
